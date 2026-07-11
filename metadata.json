@@ -1,0 +1,6 @@
+{
+  "name": "Apon Downloader",
+  "description": "An automated, watermark-free video downloader for YouTube, Instagram, TikTok, and Facebook, supporting manual paste and direct system share options.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -36,3 +36,45 @@ data class CobaltErrorDetail(
     @Json(name = "code") val code: String? = null,
     @Json(name = "text") val text: String? = null
 )
+
+// --- Apify Models ---
+
+@JsonClass(generateAdapter = true)
+data class ApifyProxySettings(
+    @Json(name = "useApifyProxy") val useApifyProxy: Boolean = true,
+    @Json(name = "apifyProxyGroups") val apifyProxyGroups: List<String> = listOf("RESIDENTIAL"),
+    @Json(name = "apifyProxyCountry") val apifyProxyCountry: String = "US"
+)
+
+@JsonClass(generateAdapter = true)
+data class ApifyMergeYoutube(
+    @Json(name = "quality") val quality: Int = 720
+)
+
+@JsonClass(generateAdapter = true)
+data class ApifyRequest(
+    @Json(name = "url") val url: String,
+    @Json(name = "mergeAV") val mergeAV: Boolean? = null,
+    @Json(name = "mergeYoutube") val mergeYoutube: ApifyMergeYoutube? = null,
+    @Json(name = "proxySettings") val proxySettings: ApifyProxySettings = ApifyProxySettings()
+)
+
+@JsonClass(generateAdapter = true)
+data class ApifyResponseItem(
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "uploader") val uploader: String? = null,
+    @Json(name = "duration") val duration: Int? = null,
+    @Json(name = "formats") val formats: List<ApifyFormatItem>? = null,
+    @Json(name = "download") val download: List<ApifyDownloadItem>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ApifyFormatItem(
+    @Json(name = "resolution") val resolution: String? = null,
+    @Json(name = "url") val url: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ApifyDownloadItem(
+    @Json(name = "url") val url: String? = null
+)

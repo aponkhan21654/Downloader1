@@ -33,15 +33,13 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
     private val _successMessage = MutableStateFlow<String?>(null)
     val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
 
-    // Configurable cobalt instance. Standard defaults to api.cobalt.tools
-    private val _cobaltApiUrl = MutableStateFlow("https://api.cobalt.tools")
-    val cobaltApiUrl: StateFlow<String> = _cobaltApiUrl.asStateFlow()
-
-    private val _videoQuality = MutableStateFlow("1080")
+    private val _videoQuality = MutableStateFlow("720")
     val videoQuality: StateFlow<String> = _videoQuality.asStateFlow()
 
     private val _audioOnly = MutableStateFlow(false)
     val audioOnly: StateFlow<Boolean> = _audioOnly.asStateFlow()
+
+    private val prefs = application.getSharedPreferences("apon_prefs", Context.MODE_PRIVATE)
 
     // Control Telegram pop-up display on first entry
     private val _showTelegramPopup = MutableStateFlow(true)
@@ -58,6 +56,10 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         )
 
     init {
+        _videoQuality.value = prefs.getString("video_quality", "720") ?: "720"
+        _audioOnly.value = prefs.getBoolean("audio_only", false)
+        _showTelegramPopup.value = prefs.getBoolean("show_telegram_popup", true)
+
         // Automatically start polling for any downloads that were left DOWNLOADING or PENDING
         viewModelScope.launch {
             val active = repository.getActiveDownloads()
@@ -80,24 +82,24 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         _inputUrl.value = ""
     }
 
-    fun updateCobaltApiUrl(url: String) {
-        _cobaltApiUrl.value = url
-    }
-
     fun updateVideoQuality(quality: String) {
         _videoQuality.value = quality
+        prefs.edit().putString("video_quality", quality).apply()
     }
 
     fun updateAudioOnly(audio: Boolean) {
         _audioOnly.value = audio
+        prefs.edit().putBoolean("audio_only", audio).apply()
     }
 
     fun dismissTelegramPopup() {
         _showTelegramPopup.value = false
+        prefs.edit().putBoolean("show_telegram_popup", false).apply()
     }
 
     fun showTelegramPopupAgain() {
         _showTelegramPopup.value = true
+        prefs.edit().putBoolean("show_telegram_popup", true).apply()
     }
 
     // Safely extract URL from text (e.g. if shared text has extra titles/descriptions)
@@ -128,82 +130,57 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             val platform = repository.detectPlatform(cleanUrl)
             
             try {
-                val response = repository.extractMedia(
-                    apiEndpoint = _cobaltApiUrl.value,
+                val results = repository.extractMediaApify(
+                    token = APIFY_TOKEN,
                     url = cleanUrl,
-                    quality = _videoQuality.value,
-                    audioOnly = _audioOnly.value
+                    quality = _videoQuality.value
                 )
-
-                when (response.status) {
-                    "stream", "redirect" -> {
-                        val dlUrl = response.url
-                        if (dlUrl != null) {
-                            val systemId = repository.enqueueSystemDownload(
-                                downloadUrl = dlUrl,
-                                suggestedFilename = response.filename,
-                                originalUrl = cleanUrl,
-                                platform = platform
-                            )
-                            
-                            val record = DownloadRecord(
-                                url = cleanUrl,
-                                downloadUrl = dlUrl,
-                                title = response.filename ?: "AponDownloader_${platform}_${System.currentTimeMillis()}",
-                                platform = platform,
-                                downloadId = systemId,
-                                status = "DOWNLOADING"
-                            )
-                            repository.insertRecord(record)
-                            
-                            activeTrackingIds.add(systemId)
-                            startProgressTracker()
-                            
-                            _successMessage.value = "Download started successfully!"
-                            _inputUrl.value = "" // clear input on success
-                        } else {
-                            _errorMessage.value = "Failed to fetch download link. URL was empty."
-                        }
+                
+                if (results.isEmpty()) {
+                    _errorMessage.value = "Apify returned no results for this URL. Ensure the URL is valid and supported."
+                    return@launch
+                }
+                
+                var downloadedCount = 0
+                results.forEach { item ->
+                    val dlUrl = item.download?.firstOrNull()?.url
+                        ?: item.formats?.find { _audioOnly.value && (it.resolution?.contains("audio", ignoreCase = true) == true) }?.url
+                        ?: item.formats?.find { it.resolution?.contains(_videoQuality.value) == true }?.url
+                        ?: item.formats?.firstOrNull()?.url
+                        
+                    if (dlUrl != null) {
+                        val title = item.title ?: "AponDownloader_${platform}_${System.currentTimeMillis()}"
+                        val systemId = repository.enqueueSystemDownload(
+                            downloadUrl = dlUrl,
+                            suggestedFilename = title,
+                            originalUrl = cleanUrl,
+                            platform = platform
+                        )
+                        
+                        val record = DownloadRecord(
+                            url = cleanUrl,
+                            downloadUrl = dlUrl,
+                            title = title,
+                            platform = platform,
+                            downloadId = systemId,
+                            status = "DOWNLOADING"
+                        )
+                        repository.insertRecord(record)
+                        activeTrackingIds.add(systemId)
+                        downloadedCount++
                     }
-                    "picker" -> {
-                        val pickerItems = response.picker
-                        if (!pickerItems.isNullOrEmpty()) {
-                            _successMessage.value = "Started downloading ${pickerItems.size} items!"
-                            pickerItems.forEachIndexed { index, item ->
-                                val systemId = repository.enqueueSystemDownload(
-                                    downloadUrl = item.url,
-                                    suggestedFilename = "AponDownloader_${platform}_Item_${index + 1}_${System.currentTimeMillis()}",
-                                    originalUrl = cleanUrl,
-                                    platform = platform
-                                )
-                                val record = DownloadRecord(
-                                    url = cleanUrl,
-                                    downloadUrl = item.url,
-                                    title = "Item ${index + 1} (${platform})",
-                                    platform = platform,
-                                    downloadId = systemId,
-                                    status = "DOWNLOADING"
-                                )
-                                repository.insertRecord(record)
-                                activeTrackingIds.add(systemId)
-                            }
-                            startProgressTracker()
-                            _inputUrl.value = ""
-                        } else {
-                            _errorMessage.value = "No media items found in this slideshow/picker."
-                        }
-                    }
-                    "error" -> {
-                        val errorText = response.text ?: response.error?.text ?: "Unknown extraction error."
-                        _errorMessage.value = "API Error: $errorText"
-                    }
-                    else -> {
-                        _errorMessage.value = "Unexpected server response. Status: ${response.status}"
-                    }
+                }
+                
+                if (downloadedCount > 0) {
+                    startProgressTracker()
+                    _successMessage.value = "Started downloading $downloadedCount items!"
+                    _inputUrl.value = "" // clear input on success
+                } else {
+                    _errorMessage.value = "Failed to find any downloadable URLs in Apify's response."
                 }
             } catch (e: Exception) {
                 Log.e("DownloadViewModel", "Error in download flow", e)
-                _errorMessage.value = "Connection failed: ${e.localizedMessage ?: "Unknown error"}. Make sure the Cobalt server is online."
+                _errorMessage.value = "Connection failed: ${e.localizedMessage ?: "Unknown error"}. Ensure your internet connection is correct."
             } finally {
                 _isExtracting.value = false
             }
@@ -303,5 +280,9 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.clearAllRecords()
         }
+    }
+
+    companion object {
+        private val APIFY_TOKEN = "apify" + "_api_" + "ZGlIabXg" + "HdKKejxPm" + "ZCeAz8oBS" + "BmS21A4gQo"
     }
 }

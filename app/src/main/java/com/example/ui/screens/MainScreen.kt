@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,7 +56,6 @@ fun MainScreen(
     val downloadsHistory by viewModel.downloadsHistory.collectAsState()
     val showTelegramPopup by viewModel.showTelegramPopup.collectAsState()
 
-    val cobaltApiUrl by viewModel.cobaltApiUrl.collectAsState()
     val videoQuality by viewModel.videoQuality.collectAsState()
     val audioOnly by viewModel.audioOnly.collectAsState()
 
@@ -469,10 +470,8 @@ fun MainScreen(
             // Settings Dialog popup
             if (showSettingsDialog) {
                 SettingsDialog(
-                    apiUrl = cobaltApiUrl,
                     quality = videoQuality,
                     audioOnly = audioOnly,
-                    onApiUrlChange = { viewModel.updateCobaltApiUrl(it) },
                     onQualityChange = { viewModel.updateVideoQuality(it) },
                     onAudioOnlyChange = { viewModel.updateAudioOnly(it) },
                     onDismiss = { showSettingsDialog = false }
@@ -876,22 +875,12 @@ fun TelegramJoinDialog(
 
 @Composable
 fun SettingsDialog(
-    apiUrl: String,
     quality: String,
     audioOnly: Boolean,
-    onApiUrlChange: (String) -> Unit,
     onQualityChange: (String) -> Unit,
     onAudioOnlyChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val publicInstances = listOf(
-        "https://api.cobalt.tools",
-        "https://cobalt.api.red",
-        "https://co.wuk.ko"
-    )
-
-    var customApiInput by remember { mutableStateOf(apiUrl) }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -918,69 +907,6 @@ fun SettingsDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // API Server Instance Selection
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Cobalt API Server Instance",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = LightText
-                    )
-                    Text(
-                        text = "সার্ভার পরিবর্তন করতে পারেন যদি কোনোটা কাজ না করে",
-                        fontSize = 10.sp,
-                        color = GrayText
-                    )
-
-                    // Instance radio buttons
-                    publicInstances.forEach { instance ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    customApiInput = instance
-                                    onApiUrlChange(instance)
-                                }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = apiUrl == instance,
-                                onClick = {
-                                    customApiInput = instance
-                                    onApiUrlChange(instance)
-                                },
-                                colors = RadioButtonDefaults.colors(selectedColor = GlowTeal)
-                            )
-                            Text(
-                                text = instance,
-                                fontSize = 12.sp,
-                                color = LightText,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        }
-                    }
-
-                    // Custom URL input
-                    OutlinedTextField(
-                        value = customApiInput,
-                        onValueChange = {
-                            customApiInput = it
-                            onApiUrlChange(it)
-                        },
-                        label = { Text("Custom Cobalt URL", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = GlowTeal,
-                            unfocusedBorderColor = MutedGray,
-                            focusedTextColor = LightText,
-                            unfocusedTextColor = LightText
-                        )
-                    )
-                }
-
                 // Video Quality dropdown/selector
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(

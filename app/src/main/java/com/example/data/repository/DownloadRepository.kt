@@ -10,6 +10,10 @@ import com.example.data.database.DownloadRecord
 import com.example.data.network.CobaltApiService
 import com.example.data.network.CobaltRequest
 import com.example.data.network.CobaltResponse
+import com.example.data.network.ApifyApiService
+import com.example.data.network.ApifyRequest
+import com.example.data.network.ApifyResponseItem
+import com.example.data.network.ApifyMergeYoutube
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +36,7 @@ class DownloadRepository(
         .build()
 
     private val apiService = retrofit.create(CobaltApiService::class.java)
+    private val apifyService = retrofit.create(ApifyApiService::class.java)
 
     val allRecords: Flow<List<DownloadRecord>> = downloadDao.getAllRecords()
 
@@ -80,6 +85,40 @@ class DownloadRepository(
         
         Log.d("DownloadRepository", "Extracting url: $url using endpoint: $endpoint")
         apiService.downloadMedia(endpoint, request)
+    }
+
+    // Call Apify API to extract direct download links
+    suspend fun extractMediaApify(
+        token: String,
+        url: String,
+        quality: String = "720"
+    ): List<ApifyResponseItem> = withContext(Dispatchers.IO) {
+        val platform = detectPlatform(url)
+        val qualityInt = quality.toIntOrNull() ?: 720
+        
+        val request = when (platform) {
+            "YouTube" -> {
+                ApifyRequest(
+                    url = url,
+                    mergeYoutube = ApifyMergeYoutube(quality = qualityInt)
+                )
+            }
+            "Facebook", "Instagram" -> {
+                ApifyRequest(
+                    url = url,
+                    mergeAV = true
+                )
+            }
+            else -> {
+                ApifyRequest(
+                    url = url
+                )
+            }
+        }
+        
+        val endpoint = "https://api.apify.com/v2/acts/wilcode~all-social-media-video-downloader/run-sync-get-dataset-items"
+        Log.d("DownloadRepository", "Extracting via Apify for URL: $url using endpoint: $endpoint")
+        apifyService.downloadMedia(endpoint, token, request)
     }
 
     // Enqueue the direct stream download link in Android's system DownloadManager

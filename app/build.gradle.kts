@@ -46,7 +46,7 @@ android {
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
-    } }
+    } 
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
